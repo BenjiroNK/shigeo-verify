@@ -26,7 +26,8 @@ It checks that you're a real person on a real device without a VPN, so alt accou
 | Discord account age and profile picture | Very new accounts get a quick staff check | Nothing new (already public on Discord) |
 | That you pressed the button yourself, plus a tiny hidden puzzle your browser solves (~1 second) | Stop scripts and bots | Nothing |
 
-To check for VPNs, the IP (only the IP) is sent to **ip-api.com**, **proxycheck.io** and **IPQualityScore**.
+To check for VPNs, the IP (only the IP) is sent over HTTPS to **proxycheck.io** and **IPQualityScore**. **ip-api.com** is only asked as a backup if proxycheck can't answer.
+The IP is never written to a file or a log.
 
 ## What staff see
 
@@ -35,7 +36,8 @@ If a verify needs a human look, staff get a short reason, like `VPN detected` or
 
 ## Deleting your data
 
-Ask in **#support**. Staff run `/verify-forget` and your saved codes are deleted.
+If you leave the server, your saved codes are **deleted automatically after 90 days** (banned people are kept, to stop ban evasion).
+Want them gone now? Ask in **#support**. Staff run `/verify-forget` and they're deleted.
 
 ## Files
 
@@ -43,6 +45,11 @@ Ask in **#support**. Staff run `/verify-forget` and your saved codes are deleted
 - `verify_pages.py`: the "What we check", Privacy and Help pages
 
 API keys and the hash salt live in the bot's private `.env` and data files. They are **not** in this repo.
+This is **only the verification part** of the bot.
+
+## License
+
+All rights reserved. The code is public so you can check it, not so you can copy it. See `LICENSE`.
 
 ---
 
@@ -54,4 +61,4 @@ API keys and the hash salt live in the bot's private `.env` and data files. They
 - ما يشوف ملفاتك ولا الكاميرا ولا موقعك.
 - الـ IP **ما ينحفظ أبداً**، بس رمز مشفّر ما ينرجع.
 - يفحص: الـ VPN، والأجهزة الوهمية، والحسابات الثانية.
-- تبي نحذف بياناتك؟ اطلب في **#support**.
+- إذا طلعت من السيرفر تنحذف رموزك تلقائياً بعد 90 يوم، أو اطلب حذفها الحين في **#support**.

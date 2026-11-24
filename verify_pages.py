@@ -58,9 +58,9 @@ def info():
 
 <h2>What it does check, and why</h2>
 <ul class='yes'>
-<li><b>Your IP address:</b> to spot VPNs, proxies and servers. It's checked by ip-api.com, proxycheck.io and
-IPQualityScore (they only see the IP, nothing else). <b>We never save your real IP</b>. We only keep a scrambled code
-(a salted hash) that can't be turned back into the IP.</li>
+<li><b>Your IP address:</b> to spot VPNs, proxies and servers. It's checked by proxycheck.io and IPQualityScore over a
+secure connection (they only see the IP, nothing else). <b>We never save your real IP</b>, not even for a second in a
+file. We only keep a scrambled code (a salted hash) that can't be turned back into the IP.</li>
 <li><b>Basic device info:</b> graphics card name, screen size, timezone, language and number of CPU cores.
 This catches virtual machines and one person making many accounts. It's also saved only as a scrambled code.</li>
 <li><b>A random browser ID:</b> a random number saved in your browser, so one browser can't verify lots of accounts.</li>
@@ -72,8 +72,9 @@ This catches virtual machines and one person making many accounts. It's also sav
 <b>Staff never see your IP</b> or your device details.</p>
 
 <h2>How long it's kept, and deleting it</h2>
-<p>The scrambled codes are kept so alts can still be caught later. Want yours deleted? Ask in <b>#support</b> and staff
-will remove it with one command.</p>
+<p>The scrambled codes are kept while you're in the server, so alts can be caught. <b>If you leave, they're deleted
+automatically after 90 days</b> (unless you were banned, so banned people can't come back on an alt).
+Want yours deleted now? Ask in <b>#support</b> and staff will remove it with one command.</p>
 {src}
 
 <div class='ar'>
@@ -92,7 +93,7 @@ will remove it with one command.</p>
 <li><b>رقم عشوائي للمتصفح:</b> عشان متصفح واحد ما يوثّق حسابات كثيرة.</li>
 <li><b>عمر حسابك وصورتك في ديسكورد:</b> معلومات عامة أصلاً.</li>
 </ul>
-<p>الإدارة ما تشوف الـ IP أو معلومات جهازك، بس سبب قصير مثل "VPN detected". تبي نحذف بياناتك؟ اطلب في <b>#support</b>.</p>
+<p>الإدارة ما تشوف الـ IP أو معلومات جهازك، بس سبب قصير مثل "VPN detected". إذا طلعت من السيرفر تنحذف رموزك تلقائياً بعد 90 يوم. تبي نحذفها الحين؟ اطلب في <b>#support</b>.</p>
 {src_ar}
 </div>""")
 
@@ -113,22 +114,30 @@ The Benjiro bot has its own policy at <a href='https://benjironk.com/privacy'>be
 
 <h2>What we don't collect</h2>
 <ul class='no'>
-<li>Raw IP addresses (only kept in memory for a few seconds while the check runs)</li>
+<li>Raw IP addresses. The IP is only used for the few seconds the check takes and is never written anywhere,
+not even in logs</li>
 <li>Passwords, Discord tokens, emails, messages, files, location, camera or microphone</li>
-<li>Any tracking or ads. This site loads no outside scripts.</li>
+<li>Any tracking, analytics or ads. This site loads no outside scripts, fonts or images, and tells your browser
+not to share where you came from and not to allow camera, microphone or location</li>
 </ul>
 
 <h2>Why</h2>
 <p>To stop alt accounts, bots, raids and ban evasion in the server. Nothing is sold or shared for marketing.</p>
 
 <h2>Who else sees data</h2>
-<p>To check for VPNs, your IP (only the IP) is sent to <b>ip-api.com</b>, <b>proxycheck.io</b> and <b>IPQualityScore</b>
-each time you verify. The site is served through <b>Cloudflare</b>. Discord staff with the Gaster Crew role see a short
+<p>To check for VPNs, your IP (only the IP, nothing else) is sent over a secure connection to <b>proxycheck.io</b> and
+<b>IPQualityScore</b> each time you verify. If proxycheck can't answer, <b>ip-api.com</b> is asked instead as a backup.
+The site is served through <b>Cloudflare</b>. Discord staff with the Gaster Crew role see a short
 reason when a verify needs review, never your IP or device details.</p>
 
+<h2>Cookies</h2>
+<p>One cookie, <code>gs_bid</code>: a random number (also kept in your browser's local storage) so one browser can't verify
+many accounts. It isn't used for anything else and isn't shared with anyone.</p>
+
 <h2>Keeping and deleting</h2>
-<p>Hashes are kept while the server exists so returning alts can be caught. Ask in <b>#support</b> (or use the
-<a href='/help'>help form</a>) and staff will delete yours. One-time verify links expire after 15 minutes.</p>
+<p>Hashes are kept while you're in the server. <b>They're deleted automatically 90 days after you leave</b>, unless you
+were banned (to stop ban evasion). Ask in <b>#support</b> (or use the <a href='/help'>help form</a>) and staff will delete
+yours right away. One-time verify links expire after 15 minutes.</p>
 
 <h2>Check it yourself</h2>
 <p>Everything above can be checked in the {src}.</p>
