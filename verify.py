@@ -4,7 +4,7 @@ Button (or /verify) -> personal one-time link -> Shigeo's own web page.
 The page runs a small check in the browser, then Shigeo decides:
 
 BLOCK (try again without it):
-  * VPN / proxy / Tor / datacenter IP (ip-api.com + proxycheck.io + IPQualityScore)
+  * VPN / proxy / Tor / datacenter IP (proxycheck.io + IPQualityScore, ip-api.com only as backup)
   * automated / headless browser (webdriver, HeadlessChrome, fake clicks)
   * request didn't come from the real page (hidden proof-of-work failed)
   * virtual machine graphics (VMware, VirtualBox, QEMU, Parallels, Hyper-V, UTM...)
@@ -22,9 +22,12 @@ STAFF REVIEW (Approve / Ignore buttons in the staff channel):
   * JavaScript turned off (we can't check the device)
 PASS -> Verified right away.
 
-Nothing raw is stored: IPs and fingerprints are kept only as salted hashes.
+Privacy: nothing raw is stored, not even in memory. IPs and fingerprints are kept only as salted hashes.
+Only the IP is sent to the VPN-check services. Codes of people who left 90+ days ago are deleted
+automatically (banned people are kept). Pages load no outside scripts and send strict privacy headers.
 Staff can also run /verify user:@someone to verify a person by hand.
 """
+import asyncio
 import datetime as dt
 import hashlib
 import html
@@ -74,6 +77,7 @@ VERIFIED, UNVERIFIED = "Verified", "Unverified"
 MIN_AGE_DAYS = 7
 NO_AVATAR_AGE_DAYS = 30
 TOKEN_TTL = 15 * 60
+PRUNE_DAYS = 90         # codes of people who left are deleted after this (not banned people)
 POW_BITS = 18            # hidden proof-of-work, ~0.2-1 s on a phone
 MIN_SECONDS = 2.0        # faster than this from page open to submit = not a human
 HEADLESS_UA = re.compile(r"headlesschrome|phantomjs|headless|puppeteer|playwright|selenium|electron/", re.I)
@@ -186,6 +190,7 @@ class ShigeoVerify:
         self.data.setdefault("ips", {})
         self.data.setdefault("fps", {})
         self.data.setdefault("bids", {})
+        self.data.setdefault("seen", {})
         self._save()
 
     # ------------------------------------------------------------ helpers
@@ -229,39 +234,54 @@ class ShigeoVerify:
         if unv and unv in member.roles:
             await member.remove_roles(unv, reason=reason)
 
-    async def ip_info(self, ip, ua="", lang=""):
-        """ip-api.com + proxycheck.io (+ IPQualityScore when IPQS_KEY is set). Never raises."""
+    async def ip_info(self, ip):
+        """Ask VPN-check services about the IP. Only the IP is sent, always over HTTPS when possible.
+
+        proxycheck.io (HTTPS) is the main check, IPQualityScore (HTTPS) is added when IPQS_KEY is set,
+        and ip-api.com (plain HTTP, free tier) is only used as a backup if proxycheck can't answer.
+        Never raises, and never logs the IP or API keys.
+        """
         info = {"vpn": False, "country": "?", "tz": "", "mobile": False, "why": [], "failed": False, "risk": 0}
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=6)) as s:
-                async with s.get(f"http://ip-api.com/json/{ip}?fields=status,proxy,hosting,mobile,countryCode,timezone") as r:
-                    j = await r.json(content_type=None)
-                if j.get("status") != "success":
-                    info["failed"] = True
-                if j.get("proxy"):
-                    info["why"].append("proxy/VPN IP")
-                if j.get("hosting"):
-                    info["why"].append("datacenter / server IP")
-                info.update(country=j.get("countryCode", "?"), tz=j.get("timezone", ""), mobile=bool(j.get("mobile")))
-                key = os.getenv("PROXYCHECK_KEY", "")   # set in .env for more daily checks (works without, 100/day)
+                got_geo = False
+                key = os.getenv("PROXYCHECK_KEY", "")   # set in .env for 1,000 checks a day (works without, 100/day)
                 q = f"key={key}&" if key else ""
                 try:
-                    async with s.get(f"https://proxycheck.io/v2/{ip}?{q}vpn=1&risk=1") as r:
+                    async with s.get(f"https://proxycheck.io/v2/{ip}?{q}vpn=1&asn=1&risk=1") as r:
                         pj = await r.json(content_type=None)
                     p = pj.get(ip, {})
-                    if p.get("proxy") == "yes":
-                        info["why"].append(f"proxycheck: {p.get('type', 'proxy')}")
-                    info["risk"] = int(p.get("risk", 0) or 0)
+                    if p:
+                        typ = str(p.get("type", ""))
+                        if p.get("proxy") == "yes":
+                            info["why"].append(f"proxycheck: {typ or 'proxy'}")
+                        elif "hosting" in typ.lower():
+                            info["why"].append("datacenter / server IP")
+                        info["risk"] = int(p.get("risk", 0) or 0)
+                        info["mobile"] = typ.lower() == "wireless"
+                        if p.get("isocode"):
+                            info.update(country=p["isocode"], tz=p.get("timezone", ""))
+                            got_geo = True
                 except Exception as exc:
-                    log.warning("proxycheck failed: %s", exc)
+                    log.warning("proxycheck failed: %s", type(exc).__name__)
+                if not got_geo:                           # backup only
+                    try:
+                        async with s.get(f"http://ip-api.com/json/{ip}?fields=status,proxy,hosting,mobile,countryCode,timezone") as r:
+                            j = await r.json(content_type=None)
+                        if j.get("status") != "success":
+                            info["failed"] = True
+                        if j.get("proxy"):
+                            info["why"].append("proxy/VPN IP")
+                        if j.get("hosting"):
+                            info["why"].append("datacenter / server IP")
+                        info.update(country=j.get("countryCode", "?"), tz=j.get("timezone", ""), mobile=bool(j.get("mobile")))
+                    except Exception as exc:
+                        info["failed"] = True
+                        log.warning("backup IP check failed: %s", type(exc).__name__)
                 ipqs = os.getenv("IPQS_KEY", "")         # IPQualityScore, 1,000 free checks a month
                 if ipqs:
                     try:
                         params = {"strictness": "1", "allow_public_access_points": "true"}
-                        if ua:
-                            params["user_agent"] = ua
-                        if lang:
-                            params["user_language"] = lang
                         async with s.get(f"https://ipqualityscore.com/api/json/ip/{ipqs}/{ip}", params=params) as r:
                             q = await r.json(content_type=None)
                         if q.get("success"):
@@ -276,18 +296,30 @@ class ShigeoVerify:
                             info["ipqs_bot"] = bool(q.get("bot_status"))
                             info["mobile"] = info["mobile"] or bool(q.get("mobile"))
                         else:
-                            log.warning("IPQS said no: %s", q.get("message"))
+                            log.warning("IPQS said no (out of credits?)")
                     except Exception as exc:
-                        log.warning("IPQS failed: %s", exc)
+                        log.warning("IPQS failed: %s", type(exc).__name__)
         except Exception as exc:
             info["failed"] = True
-            log.warning("IP lookup failed for a verify: %s", exc)
+            log.warning("IP checks failed: %s", type(exc).__name__)
         info["vpn"] = bool(info["why"])
         return info
 
     # ------------------------------------------------------------ web
     async def start(self):
-        app = web.Application(client_max_size=64 * 1024)
+        @web.middleware
+        async def privacy_headers(request, handler):
+            resp = await handler(request)
+            resp.headers["Referrer-Policy"] = "no-referrer"
+            resp.headers["X-Frame-Options"] = "DENY"
+            resp.headers["X-Content-Type-Options"] = "nosniff"
+            resp.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+            resp.headers["Content-Security-Policy"] = ("default-src 'self'; script-src 'self' 'unsafe-inline'; "
+                                                       "style-src 'unsafe-inline'; img-src 'self' data:; "
+                                                       "connect-src 'self'; form-action 'self'; frame-ancestors 'none'")
+            return resp
+
+        app = web.Application(client_max_size=64 * 1024, middlewares=[privacy_headers])
         page = lambda fn: (lambda r: web.Response(text=fn(), content_type="text/html"))
         app.router.add_get("/", page(vp.home))
         app.router.add_get("/info", page(vp.info))
@@ -296,10 +328,11 @@ class ShigeoVerify:
         app.router.add_post("/help", self.post_help)
         app.router.add_get("/v/{tok}", self.get_page)
         app.router.add_post("/v/{tok}", self.post_page)
-        self.runner = web.AppRunner(app)
+        self.runner = web.AppRunner(app, access_log=None)        # no request log = no IPs in the console
         await self.runner.setup()
         await web.TCPSite(self.runner, "0.0.0.0", PORT).start()
         log.info("Verify page running on port %s (%s)", PORT, PUBLIC)
+        asyncio.create_task(self.prune_loop())
 
     async def get_page(self, request):
         tok = request.match_info["tok"]
@@ -307,7 +340,7 @@ class ShigeoVerify:
         if not e or e["exp"] < time.time():
             return html_page(*EXPIRED)
         e["served"] = e["served"] or time.time()
-        e["sip"] = e["sip"] or client_ip(request)
+        e["sip"] = e["sip"] or self._hash("s:" + client_ip(request))
         page = CHECK.replace("{N}", e["nonce"]).replace("{D}", str(POW_BITS))
         return web.Response(text=page, content_type="text/html", headers={"Cache-Control": "no-store"})
 
@@ -339,7 +372,7 @@ class ShigeoVerify:
                 sig = {}
         ip = client_ip(request)
         ua = str(sig.get("ua", ""))[:300]
-        info = await self.ip_info(ip, ua, str(sig.get("langs", "")).split(",")[0][:20])
+        info = await self.ip_info(ip)
 
         # ---- hard blocks
         block = None
@@ -390,7 +423,7 @@ class ShigeoVerify:
         took = time.time() - (entry["served"] or time.time())
         if is_json and took < MIN_SECONDS:
             reasons.append(f"finished in {took:.1f}s (too fast for a human)")
-        if entry["sip"] and entry["sip"] != ip:
+        if entry["sip"] and entry["sip"] != self._hash("s:" + ip):
             reasons.append("IP changed between opening the page and pressing the button")
         if getattr(member.public_flags, "spammer", False):
             reasons.append("Discord flagged this account as a likely spammer")
@@ -440,6 +473,7 @@ class ShigeoVerify:
             self._remember("fps", fp_key, member.id)
         if bid_key:
             self._remember("bids", bid_key, member.id)
+        self.data["seen"][str(member.id)] = int(time.time())
         self._save()
 
         if reasons:
@@ -457,7 +491,7 @@ class ShigeoVerify:
     async def post_help(self, request):
         def answer(msg):
             return web.Response(text=vp.help_form(msg), content_type="text/html")
-        ip = client_ip(request)
+        ip = self._hash("h:" + client_ip(request))      # rate limit by scrambled IP, kept in memory only
         now = time.time()
         hits = [t for t in self.help_hits.get(ip, []) if t > now - 3600]
         if len(hits) >= 3:
@@ -503,8 +537,41 @@ class ShigeoVerify:
                     n += 1
                     if not ids:
                         del self.data[table][key]
+        self.data["seen"].pop(str(uid), None)
         self._save()
         return n
+
+    async def prune_loop(self):
+        """Once a day: delete the saved codes of people who left the server 90+ days ago.
+        Banned people are kept, so they can't come back on an alt."""
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            try:
+                g = self.guild()
+                if g:
+                    try:
+                        banned = {str(b.user.id) async for b in g.bans(limit=None)}
+                    except discord.HTTPException:
+                        banned = None
+                    now = time.time()
+                    users = {u for t in ("ips", "fps", "bids") for ids in self.data[t].values() for u in ids}
+                    gone = 0
+                    for uid in users:
+                        if g.get_member(int(uid)):
+                            self.data["seen"][uid] = int(now)          # still here: clock restarts
+                            continue
+                        if banned is None or uid in banned:
+                            continue
+                        seen = self.data["seen"].setdefault(uid, int(now))   # start the 90 days for old entries
+                        if now - seen > PRUNE_DAYS * 86400:
+                            self.forget(uid)
+                            gone += 1
+                    self._save()
+                    if gone:
+                        log.info("Verify privacy cleanup: deleted saved codes for %s people who left", gone)
+            except Exception as exc:
+                log.warning("verify cleanup failed: %s", type(exc).__name__)
+            await asyncio.sleep(86400)
 
     async def send_review(self, member, reasons, info):
         ch = self.bot.get_channel(REVIEW_CHANNEL)
