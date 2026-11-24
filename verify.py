@@ -643,16 +643,20 @@ def build_commands(sv: ShigeoVerify):
         v.add_item(discord.ui.Button(label="Verify (Shigeo)", emoji="🛡️", style=discord.ButtonStyle.primary, custom_id="sv_start"))
         e = discord.Embed(title="🛡️ Gaster's Ship Verification", color=0xFFFFFF,
                           description="**1.** Press **Verify (Shigeo)** below\n"
-                                      "**2.** Open your link and tap the button (takes 2 seconds)\n"
+                                      "**2.** Open your link and tap the button (2 seconds)\n"
                                       "**3.** Done - you get access right away\n\n"
                                       "⚠️ Turn off any **VPN / proxy** first\n"
-                                      "🚫 VPNs, proxies, bots and virtual machines are blocked\n"
-                                      "🕵️ Alt accounts get caught and checked by staff\n"
-                                      "🔒 Your IP is never saved, only a scrambled code\n"
-                                      f"🔍 What we check: [{PUBLIC.split('://')[-1]}/info]({PUBLIC}/info)\n"
+                                      "🚫 VPNs, bots, alts and virtual machines are blocked\n\n"
+                                      "🔒 **Your privacy**\n"
+                                      "• Never asks for your password or Discord login\n"
+                                      "• Your IP is never saved, only a scrambled code\n"
+                                      "• No trackers, no downloads, no camera or location\n"
+                                      "• Your data is auto-deleted 90 days after you leave\n\n"
+                                      f"✅ **Proof it's safe:** the code is public on [GitHub]({vp.SOURCE_URL}) · "
+                                      f"[What we check]({PUBLIC}/info) · [Privacy]({PUBLIC}/privacy)\n"
                                       f"❓ Stuck? [Help form]({PUBLIC}/help) or ask in #support\n\n"
                                       "اضغط **Verify** ↓ ، افتح الرابط واضغط الزر. أطفئ الـ VPN أول.\n"
-                                      "الـ VPN والبوتات والأجهزة الوهمية ممنوعة.")
+                                      "🔒 ما نطلب باسوورد ولا تسجيل دخول، والـ IP ما ينحفظ. الكود منشور للكل.")
         e.set_footer(text="Shigeo · Gaster Ship security")
         await inter.channel.send(embed=e, view=v)
         await inter.response.send_message("Panel posted.", ephemeral=True)
