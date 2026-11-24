@@ -73,6 +73,7 @@ def client_ip(request):
     return remote
 REVIEW_CHANNEL = int(os.getenv("VERIFY_REVIEW_CHANNEL", "1536169178812260392"))  # staff verify-review channel
 REVIEW_PING_ROLE = "Gaster Crew"
+TICKET_CHANNEL = int(os.getenv("VERIFY_TICKET_CHANNEL", "1560671479404953600"))   # where people open tickets
 VERIFIED, UNVERIFIED = "Verified", "Unverified"
 MIN_AGE_DAYS = 7
 NO_AVATAR_AGE_DAYS = 30
@@ -466,6 +467,7 @@ class ShigeoVerify:
 
         if block:
             log.info("Verify blocked for %s: %s", member, block[2])
+            await self.send_log(member, f"⛔ Blocked: {block[2]}", 0xED4245, info)
             return reply(block[0], block[1])
 
         self._remember("ips", ip_key, member.id)
@@ -486,6 +488,7 @@ class ShigeoVerify:
             log.warning("verify give failed: %s", exc)
             return reply("Something went wrong", "Couldn't give you the role. Ask a mod in #support.")
         log.info("Verified %s via Shigeo", member)
+        await self.send_log(member, "✅ Verified (passed every check)", 0x57F287, info)
         return reply("Verified!", "Welcome aboard Gaster's Ship. Go back to Discord, you have access now.")
 
     async def post_help(self, request):
@@ -573,6 +576,38 @@ class ShigeoVerify:
                 log.warning("verify cleanup failed: %s", type(exc).__name__)
             await asyncio.sleep(86400)
 
+    async def send_log(self, member, what, color, info):
+        """Quiet note in the staff channel (no ping) for passes and blocks."""
+        ch = self.bot.get_channel(REVIEW_CHANNEL)
+        if ch is None:
+            return
+        e = discord.Embed(description=f"{member.mention} (`{member}`) · {what}\n"
+                                      f"Country: {info['country']}{' · mobile data' if info['mobile'] else ''}"
+                                      f" · Account made <t:{int(member.created_at.timestamp())}:R>", color=color)
+        try:
+            await ch.send(embed=e, allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException as exc:
+            log.warning("verify log failed: %s", type(exc).__name__)
+
+    async def dm_not_approved(self, member):
+        """DM someone whose verify check was ignored, so they know what to do next."""
+        g = member.guild
+        ticket = f"https://discord.com/channels/{g.id}/{TICKET_CHANNEL}"
+        e = discord.Embed(title="Your verification wasn't approved", color=0xF0B232, description=(
+            f"Hi! Staff in **{g.name}** couldn't approve your verification.\n\n"
+            "You can:\n"
+            "**1.** Try again: turn **off any VPN / proxy / private relay**, then press **Verify (Shigeo)** "
+            "in #verification\n"
+            f"**2.** Or [open a ticket]({ticket}) and staff will help you\n\n"
+            "التوثيق حقك ما انقبل. جرّب مرة ثانية بعد ما تطفي أي VPN أو بروكسي، "
+            f"أو [افتح تكت]({ticket}) والإدارة بتساعدك."))
+        e.set_footer(text="Shigeo · Gaster Ship security")
+        try:
+            await member.send(embed=e)
+            return True
+        except discord.HTTPException:
+            return False
+
     async def send_review(self, member, reasons, info):
         ch = self.bot.get_channel(REVIEW_CHANNEL)
         if ch is None:
@@ -608,14 +643,20 @@ class ShigeoVerify:
                 return await inter.response.send_message("Only staff can do this.", ephemeral=True)
             uid = int(cid.split(":")[1])
             member = inter.guild.get_member(uid)
+            await inter.response.defer()                     # answer Discord first, then do the work
             if cid.startswith("sv_ok:") and member:
                 await self.give(member, f"Verify approved by {inter.user}")
                 note = f"✅ Approved by {inter.user.mention}"
+            elif member:
+                sent = await self.dm_not_approved(member)
+                note = (f"➖ Ignored by {inter.user.mention} · "
+                        + ("they got a DM telling them to retry without VPN or open a ticket" if sent
+                           else "couldn't DM them (DMs closed)"))
             else:
-                note = f"➖ Ignored by {inter.user.mention}" if member else "Member left the server."
+                note = "Member left the server."
             e = inter.message.embeds[0] if inter.message.embeds else discord.Embed()
             e.add_field(name="Result", value=note, inline=False)
-            await inter.response.edit_message(embed=e, view=None)
+            await inter.edit_original_response(embed=e, view=None)
 
 
 def build_commands(sv: ShigeoVerify):
